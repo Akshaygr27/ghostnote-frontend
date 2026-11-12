@@ -3,13 +3,17 @@ import type { FormEvent } from "react";
 
 import api from "../api/axios";
 
-import type { Message } from "../types/message";
+import type { Message, LikeResponse } from "../types/message";
 import { getApiErrorMessage } from "../utils/apiError";
 
 const PAGE_SIZE = 10;
 
 function MessagesPage() {
     const [messages, setMessages] = useState<Message[]>([]);
+
+    const [likingMessageIds, setLikingMessageIds] = useState<Set<string>>(
+        new Set()
+    );
 
     const [content, setContent] = useState("");
 
@@ -110,6 +114,54 @@ function MessagesPage() {
         }
     };
 
+    const handleLike = async (messageId: string) => {
+        const message = messages.find(
+            (item) => item.id === messageId
+        );
+
+        if (
+            message?.liked_by_current_user ||
+            likingMessageIds.has(messageId)
+        ) {
+            return;
+        }
+
+        setLikingMessageIds((previous) => {
+            const updated = new Set(previous);
+            updated.add(messageId);
+            return updated;
+        });
+
+        try {
+            const response = await api.post<LikeResponse>(
+                `/messages/${messageId}/like`
+            );
+
+            setMessages((previous) =>
+                previous.map((message) =>
+                    message.id === messageId
+                        ? {
+                            ...message,
+                            likes_count: response.data.likes_count,
+                            liked_by_current_user: response.data.liked
+                        }
+                        : message
+                )
+            );
+
+        } catch (error) {
+            setError(
+                getApiErrorMessage(error, "Unable to like message")
+            );
+        } finally {
+            setLikingMessageIds((previous) => {
+                const updated = new Set(previous);
+                updated.delete(messageId);
+                return updated;
+            });
+        }
+    };
+
     return (
         <main>
             <h1>Messages</h1>
@@ -170,9 +222,26 @@ function MessagesPage() {
                                     ).toLocaleString()}
                                 </p>
 
-                                <p>
-                                    Likes: {message.likes_count}
-                                </p>
+                                <div>
+                                    <span>
+                                        Likes: {message.likes_count}
+                                    </span>
+
+                                    <button
+                                        type="button"
+                                        disabled={
+                                            message.liked_by_current_user ||
+                                            likingMessageIds.has(message.id)
+                                        }
+                                        onClick={() => handleLike(message.id)}
+                                    >
+                                        {likingMessageIds.has(message.id)
+                                            ? "Liking..."
+                                            : message.liked_by_current_user
+                                                ? "❤️ Liked"
+                                                : "🤍 Like"}
+                                    </button>
+                                </div>
                             </li>
                         ))}
                     </ul>
